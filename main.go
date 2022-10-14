@@ -2,7 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"time"
+
+	"github.com/faiface/beep"
+	"github.com/faiface/beep/mp3"
+	"github.com/faiface/beep/speaker"
 )
 
 var numTasks int
@@ -12,25 +18,35 @@ type Tasks struct {
 	numPomodoros int
 }
 
-func main() {
+var totalTasks = make([]Tasks, 0)
+var totalPomodoros = make([]int, 0)
 
+func main() {
 	fmt.Println("------------------Black Pomodoro------------------")
 	fmt.Println("---------------------Welcome!---------------------")
 	fmt.Println("------------Let's fill today's session------------")
 
 	getData()
 
+	userReady := ""
+
+	fmt.Print("Ready? (Y/n) -> ")
+	fmt.Scan(&userReady)
+	if userReady == "Y" || userReady == "y" || userReady == "Yes" || userReady == "yes" {
+		pomodoros(totalPomodoros, totalTasks)
+	} else {
+		fmt.Println("All right! See you next time :)")
+		os.Exit(1)
+	}
+	fmt.Println("All done! You did a great job :D")
+	fmt.Println("See you soon!")
 }
 
 func getData() {
-
 	fmt.Println("--------------------------------------------------")
 	fmt.Println("--------------------------------------------------")
 	fmt.Print("How many tasks for this session? -> ")
 	fmt.Scan(&numTasks)
-
-	totalTasks := make([]Tasks, 0)
-	totalPomodoros := make([]int, 0)
 
 	task := ""
 	pomodoroNum := 0
@@ -54,28 +70,13 @@ func getData() {
 		totalPomodoros = append(totalPomodoros, pomodoroLen)
 		totalTasks = append(totalTasks, currentTask)
 	}
-
-	userReady := ""
-
-	fmt.Print("Ready? (Y/n) -> ")
-	fmt.Scan(&userReady)
-	if userReady == "Y" || userReady == "y" || userReady == "Yes" || userReady == "yes" {
-		pomodoros(totalPomodoros, totalTasks)
-	} else {
-		fmt.Println("All right! See you next time :)")
-		os.Exit(1)
-	}
-	fmt.Println("All done! You did a great job :D")
-	fmt.Println("See you soon!")
-
 }
 
 func pomodoros(pomodoros []int, tasks []Tasks) {
 	thisPTaskMinutes := 0
-	done := make(chan bool) // Channel
 	thisPTaskDone := 0
 	totalPomodoros := 0
-	currPCount := 0
+	pCount := 0
 
 	// Calculate total Pomodoros for this session
 	for n := 0; n < len(pomodoros); n++ {
@@ -88,18 +89,16 @@ func pomodoros(pomodoros []int, tasks []Tasks) {
 			thisPTaskMinutes = pomodoros[index] // Each pomodoro time for current task
 			for pAmount := tasks[index].numPomodoros; pAmount > 0; pAmount-- {
 				// Begin countdown
-				fmt.Printf("Beginning with pomodoro # %v from task %s", pAmount+1, tasks[index].taskName)
+				fmt.Printf("Beginning with pomodoro #%v from task %s (%v done of %v total pomodoros)", thisPTaskDone+1, tasks[index].taskName, pCount+1, totalPomodoros)
 				fmt.Println()
 				countdown(thisPTaskMinutes)
-				done <- true
-				<-done
 				// Update pomodoros done for this task
 				thisPTaskDone++
 				// Update total pomodoros done
-				currPCount++
+				pCount++
 
 				// Check for breaks
-				checkForBreaks(thisPTaskDone, tasks[index].numPomodoros, currPCount, totalPomodoros, thisPTaskMinutes)
+				checkForBreaks(thisPTaskDone, tasks[index].numPomodoros, pCount, totalPomodoros, thisPTaskMinutes)
 			}
 			thisPTaskDone = 0
 		}
@@ -111,39 +110,79 @@ func pomodoros(pomodoros []int, tasks []Tasks) {
 
 func countdown(minutes int) {
 	// Start countdown
-	// ring
+	fmt.Println("Starting countdown")
+	startTime := time.Now()
+
+	finishTime := startTime.Add(time.Minute * time.Duration(minutes))
+	currTime := startTime
+
+	for i := 0; currTime.Before(finishTime); i++ {
+		currTime = time.Now()
+	}
+	ring()
 }
 
-func checkForBreaks(pTaskDone int, taskPomodoros int, currPCount int, totalP int, pMinutes int) {
-	// Have we finished the entire session? currPCount == totalP Yes? Then...
-	// No need for breaks, say goodbye!
-
-	// Have we finished this task pomodoros? pTaskDone == taskPomodoros Yes? then...
-	// Apply this task long break
-	// applyLongBreak(pMinutes int)
-
-	// Have we gone through half of this taks pomodoros? pTaskDone == (taskPomodoros/2) Yes? then...
-	// Apply long break
-	// applyLongBreak(pMinutes int)
-
-	// Else, regular break for this task
-	// applyRegularBreak(pMinutes int)
-
+func checkForBreaks(pTaskDone int, taskPomodoros int, pCount int, totalP int, pMinutes int) {
+	if pCount == totalP { // Have we finished the entire session?
+		fmt.Println("Done with all pomodoros...") // No need for breaks
+	} else if pTaskDone == taskPomodoros { // Have we finished this task pomodoros?
+		applyLongBreak(pMinutes) // Have we gone through half of this taks pomodoros?
+	} else if pTaskDone == (taskPomodoros / 2) {
+		applyLongBreak(pMinutes)
+	} else {
+		applyRegularBreak(pMinutes)
+	}
 }
 
-// func applyRegularBreak(pMinutes int) {
-// Calculate break time: breakTime = pMinutes * 0.20
-// Apply break countdown(breakTime)
-// ring
-// }
+func applyRegularBreak(pMinutes int) {
+	fmt.Println("Regular Break Time!")
+	// Calculate break time
+	var breakTime float32 = 0.0
+	breakTime = float32(pMinutes) * 0.20
+	// Apply break
+	countdown(int(breakTime))
+}
 
-// func applyLongBreak(pMinutes int) {
-// Calculate break time: if pMinutes > 25 then breakTime = pMinutes*0.8, else if pMinutes <= 25 then breakTime = pMinutes*0.6
-// Apply break countdown(breakTime)
-// ring
-// }
+func applyLongBreak(pMinutes int) {
+	fmt.Println("Long Break Time!")
+	// Calculate break time
+	var breakTime float32 = 0.0
+	if pMinutes > 25 {
+		breakTime = float32(pMinutes) * 0.8
+	} else if pMinutes <= 25 {
+		breakTime = float32(pMinutes) * 0.6
+	}
+	// Apply break
+	countdown(int(breakTime))
+}
 
-// func ring() {
-// Do the ring
-// Wait for user
-// }
+func ring() {
+	// Open
+	sound, err := os.Open("Bomberman.mp3")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Decode
+	streamer, format, err := mp3.Decode(sound)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer streamer.Close()
+
+	// Initialize speaker
+	sr := format.SampleRate * 2
+	speaker.Init(sr, sr.N(time.Second/10))
+	resampled := beep.Resample(4, format.SampleRate, sr, streamer)
+
+	// Play
+	stopEntry := ""
+	speaker.Play(beep.Seq(resampled, beep.Callback(func() {})))
+
+	// Stop sound
+	fmt.Print("Continue? -> ")
+	fmt.Scanln(&stopEntry)
+
+	// Clear
+	speaker.Clear()
+}
